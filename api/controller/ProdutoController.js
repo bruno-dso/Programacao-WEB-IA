@@ -1,4 +1,5 @@
 const Produto = require('../model/Produto.js');
+const { removerArquivo } = require('../middleware/upload.js');
 
 // ---- validações ----
 function validarId(id) {
@@ -19,18 +20,22 @@ function validarPreco(preco) {
 module.exports = class ProdutoController {
     static async create(req, res) {
         const { nome, preco } = req.body ?? {};
+        const imagem = req.file?.filename ?? null;
 
         if (!validarNome(nome)) {
+            removerArquivo(imagem);
             return res.status(422).json({ message: 'O nome é obrigatório' });
         }
         if (!validarPreco(preco)) {
+            removerArquivo(imagem);
             return res.status(422).json({ message: 'O preço é obrigatório e deve ser um número maior ou igual a zero' });
         }
 
         try {
-            const produto = await Produto.create({ nome: nome.trim(), preco: Number(preco) });
+            const produto = await Produto.create({ nome: nome.trim(), preco: Number(preco), imagem });
             res.status(201).json({ message: 'Produto criado com sucesso', produto });
         } catch (err) {
+            removerArquivo(imagem);
             console.error(err);
             res.status(500).json({ message: 'Erro ao criar o produto' });
         }
@@ -65,38 +70,51 @@ module.exports = class ProdutoController {
     }
 
     static async update(req, res) {
+        const novaImagem = req.file?.filename ?? null;
         const id = validarId(req.params.id);
         if (!id) {
+            removerArquivo(novaImagem);
             return res.status(422).json({ message: 'ID inválido' });
         }
 
-        const { nome, preco } = req.body ?? {};
+        const { nome, preco, removerImagem } = req.body ?? {};
         const dados = {};
+        const rejeitar = (message) => {
+            removerArquivo(novaImagem);
+            return res.status(422).json({ message });
+        };
 
         if (nome !== undefined) {
-            if (!validarNome(nome)) {
-                return res.status(422).json({ message: 'O nome não pode ser vazio' });
-            }
+            if (!validarNome(nome)) return rejeitar('O nome não pode ser vazio');
             dados.nome = nome.trim();
         }
         if (preco !== undefined) {
-            if (!validarPreco(preco)) {
-                return res.status(422).json({ message: 'O preço deve ser um número maior ou igual a zero' });
-            }
+            if (!validarPreco(preco)) return rejeitar('O preço deve ser um número maior ou igual a zero');
             dados.preco = Number(preco);
         }
+        if (novaImagem) {
+            dados.imagem = novaImagem;
+        } else if (removerImagem === true || removerImagem === 'true') {
+            dados.imagem = null;
+        }
         if (Object.keys(dados).length === 0) {
-            return res.status(422).json({ message: 'Informe nome e/ou preco para atualizar' });
+            return rejeitar('Informe nome, preco e/ou imagem para atualizar');
         }
 
         try {
             const produto = await Produto.findByPk(id);
             if (!produto) {
+                removerArquivo(novaImagem);
                 return res.status(404).json({ message: 'Produto não encontrado' });
             }
+            const imagemAntiga = produto.imagem;
             await produto.update(dados);
+            if ('imagem' in dados && imagemAntiga && imagemAntiga !== dados.imagem) {
+                removerArquivo(imagemAntiga);
+            }
             res.status(200).json({ message: 'Produto atualizado com sucesso', produto });
         } catch (err) {
+            removerArquivo(novaImagem);
             console.error(err);
             res.status(500).json({ message: 'Erro ao atualizar o produto' });
         }
@@ -113,7 +131,9 @@ module.exports = class ProdutoController {
             if (!produto) {
                 return res.status(404).json({ message: 'Produto não encontrado' });
             }
+            const imagem = produto.imagem;
             await produto.destroy();
+            removerArquivo(imagem);
             res.status(200).json({ message: 'Produto deletado com sucesso' });
         } catch (err) {
             console.error(err);
