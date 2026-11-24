@@ -1,11 +1,9 @@
 const { Sequelize } = require('sequelize');
 
-const sequelize = new Sequelize(
-    process.env.DB_NAME || 'loja',
-    process.env.DB_USER || 'root',
-    process.env.DB_PASS || 'root',
+const sequelize = new Sequelize( 'loja', 'root', 'root',
     {
-        host: process.env.DB_HOST || 'localhost',
+        host: 'localhost',
+        port: 3307,
         dialect: 'mariadb'
     }
 );
